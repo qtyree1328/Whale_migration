@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Multi-Species Whale Heatmap – Animated</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.17.0-beta.1/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.17.0-beta.1/mapbox-gl.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #f4f4f4;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* Description block above the map */
+    #description {
+      max-width: 900px;
+      margin: 16px auto 8px auto;
+      padding: 0 16px;
+      color: #111;
+      font-size: 14px;
+      line-height: 1.5;
+      text-align: left;
+      box-sizing: border-box;
+    }
+    #description h2 {
+      margin: 0 0 6px 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    #map {
+      position: relative;
+      width: 100%;
+      height: 85vh;
+      box-sizing: border-box;
+    }
+
+    /* Controls (month + play/pause + species toggles) */
+    #controls {
+      position:absolute;
+      top:10px;
+      left:10px;
+      z-index:4;
+      background:rgba(255,255,255,0.92);
+      color:#111;
+      padding:10px 14px;
+      border-radius:6px;
+      font-size:13px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.15);
+    }
+    #monthSlider {
+      width:200px;
+      margin-top:4px;
+    }
+    #playPause {
+      margin-top:6px;
+      padding:4px 10px;
+      font-size:12px;
+      cursor:pointer;
+    }
+    .species-toggle {
+      display:block;
+      margin-top:4px;
+      font-size:12px;
+    }
+    .species-toggle input {
+      margin-right:4px;
+    }
+
+    /* Animation controls panel (hidden by default) */
+    #animPanel {
+      position:absolute;
+      top:10px;
+      right:10px;
+      z-index:4;
+      background:rgba(255,255,255,0.94);
+      color:#111;
+      border-radius:6px;
+      font-size:12px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.15);
+      max-width:220px;
+      box-sizing:border-box;
+    }
+    #animPanelHeader {
+      padding:8px 10px;
+      cursor:pointer;
+      font-weight:600;
+      border-bottom:1px solid rgba(0,0,0,0.08);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+    #animPanelBody {
+      display:none;
+      padding:8px 10px 10px 10px;
+    }
+    #animPanelBody label {
+      display:block;
+      margin-top:6px;
+      margin-bottom:2px;
+      font-size:11px;
+      font-weight:600;
+    }
+    #animPanelBody input[type="range"],
+    #animPanelBody input[type="number"] {
+      width:100%;
+      box-sizing:border-box;
+    }
+    #animPanelBody small {
+      display:block;
+      margin-top:2px;
+      color:#555;
+      font-size:10px;
+    }
+
+    /* Caption overlay at top center */
+    #captionBar {
+      position:absolute;
+      top:10px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:3;
+      background:rgba(255,255,255,0.94);
+      color:#111;
+      padding:10px 16px;
+      border-radius:8px;
+      font-size:14px;
+      font-weight:500;
+      max-width:95%;
+      text-align:center;
+      box-shadow:0 2px 6px rgba(0,0,0,0.15);
+      box-sizing:border-box;
+    }
+
+    /* Month label at bottom */
+    #monthBottom {
+      position:absolute;
+      bottom:12px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:3;
+      color:#111;
+      font-size:18px;
+      font-weight:600;
+      padding:4px 12px;
+      background:rgba(255,255,255,0.9);
+      border-radius:6px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.15);
+      box-sizing:border-box;
+    }
+
+    /* Simple legend */
+    #legend {
+      position:absolute;
+      bottom:10px;
+      left:10px;
+      z-index:3;
+      background:rgba(255,255,255,0.92);
+      padding:8px 10px;
+      border-radius:6px;
+      font-size:12px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.15);
+    }
+    .legend-row {
+      display:flex;
+      align-items:center;
+      margin-bottom:4px;
+    }
+    .legend-color {
+      width:14px;
+      height:14px;
+      border-radius:2px;
+      margin-right:6px;
+    }
+    .legend-blue { background:#0066ff; }
+    .legend-red  { background:#d7263d; }
+    .legend-green{ background:#00a65a; }
+  </style>
+</head>
+<body>
+
+<div id="description">
+  <h2>Multi-Species Whale Heatmap with Mapbox</h2>
+  <p>
+    This animated Mapbox GL map shows heatmaps of whale observations for three datasets plotted
+    simultaneously. These data were aggregated and downloaded by GBIF! The data includes observations of: <strong>blue whales from 2006-2025</strong>, <strong>humpback whales from 2017-2025</strong>, and
+    <strong>sperm whales from 2006-2025</strong>. The animation smoothly morphs monthly density from January to December,
+    with distinct colors for each species so spatial overlap is visible.
+  </p>
+</div>
+
+<div id="map">
+  <div id="controls">
+    Month: <span id="monthLabel">January</span><br>
+    <input id="monthSlider" type="range" min="1" max="12" step="1" value="1"><br>
+    <button id="playPause">Pause</button>
+
+    <!-- Species toggles -->
+    <div style="margin-top:8px; font-weight:600;">Species shown:</div>
+    <label class="species-toggle">
+      <input type="checkbox" data-layer="sperm_2019_heat" checked>
+      Sperm whales (red)
+    </label>
+    <label class="species-toggle">
+      <input type="checkbox" data-layer="humpback_2019_heat" checked>
+      Humpback whales (green)
+    </label>
+    <label class="species-toggle">
+      <input type="checkbox" data-layer="blue_2008_heat" checked>
+      Blue whales (blue)
+    </label>
+  </div>
+
+  <!-- Hidden animation control panel -->
+  <div id="animPanel">
+    <div id="animPanelHeader">
+      <span>Animation controls</span>
+      <span id="animPanelArrow">▸</span>
+    </div>
+    <div id="animPanelBody">
+      <label for="phaseSlider">Transition position</label>
+      <input id="phaseSlider" type="range" min="0" max="1" step="0.01" value="0">
+      <small>0 = start of month, 1 = next month</small>
+
+      <label for="durationInput">Seconds per month transition</label>
+      <input id="durationInput" type="number" min="0.1" step="0.1" value="1.5">
+      <small>Lower = faster, higher = slower</small>
+
+      <label for="blurSlider">Blur strength</label>
+      <input id="blurSlider" type="range" min="0" max="2" step="0.1" value="0.5">
+      <small>Controls how “soft” the transition looks</small>
+    </div>
+  </div>
+
+  <div id="captionBar">
+    Red: Sperm whales &nbsp;&bull;&nbsp;
+    Green: Humpback whales &nbsp;&bull;&nbsp;
+    Blue: Blue whales &nbsp;&mdash;&nbsp;
+    Animation shows monthly density (Jan–Dec)
+  </div>
+
+  <div id="monthBottom">January</div>
+
+  <div id="legend">
+    <div class="legend-row">
+      <div class="legend-color legend-red"></div>
+      <div>Sperm whale observations</div>
+    </div>
+    <div class="legend-row">
+      <div class="legend-color legend-green"></div>
+      <div>Humpback whale observations</div>
+    </div>
+    <div class="legend-row">
+      <div class="legend-color legend-blue"></div>
+      <div>Blue whale observations</div>
+    </div>
+    <div style="margin-top:4px; font-size:11px; color:#555;">
+      Brighter color = higher local observation density for that species.
+    </div>
+  </div>
+</div>
+
+<script>
+mapboxgl.accessToken =
+  'pk.eyJ1IjoicXR5cmVlIiwiYSI6ImNtaHl5eHNmeDBoY3oybXEwNTIxNGgxYmsifQ.VqoAKKHQxQX-lNNPwVKHmw';
+
+const monthNames = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December'
+];
+
+// Animation state
+let monthA = 1;            // current month
+let monthB = 2;            // next month
+let phase = 0;             // 0..1 between monthA and monthB
+let startTime = null;
+let animFrame = null;
+let isPlaying = true;
+let morphDuration = 1500;  // ms for each month-transition (user-adjustable)
+let extraBlur = 0.5;       // extra radius factor for blur effect (user-adjustable)
+
+// Species configs (all animated together)
+const SPECIES = [
+  {
+    id: 'blue_2008_heat',
+    sourceId: 'blue_2008_src',
+    url: 'mapbox://qtyree.5dg1e85w',
+    sourceLayer: 'Blue_whale_merged_2008_2006_2-bhifyv'
+  },
+  {
+    id: 'sperm_2019_heat',
+    sourceId: 'sperm_2019_src',
+    url: 'mapbox://qtyree.d1dgy295',
+    sourceLayer: 'Sperm_whale_gbif_2006_2025-09g1qn'
+  },
+  {
+    id: 'humpback_2019_heat',
+    sourceId: 'humpback_2019_src',
+    url: 'mapbox://qtyree.3w2ef80k',
+    sourceLayer: 'Humpback_whale_merged_2019_Au-59si9c'
+  }
+];
+
+// Lighter basemap
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/light-v11',
+  center: [-130, 35],
+  zoom: 3
+});
+
+// Helper: update labels
+function updateLabels() {
+  const label = monthNames[monthA - 1];
+  document.getElementById('monthLabel').textContent = label;
+  document.getElementById('monthBottom').textContent = label;
+  document.getElementById('monthSlider').value = String(monthA);
+}
+
+// Apply month filter to all layers so only monthA + monthB are in play
+function setFilterAll() {
+  SPECIES.forEach(cfg => {
+    if (map.getLayer(cfg.id)) {
+      map.setFilter(cfg.id, [
+        'in',
+        ['get', 'month'],
+        ['literal', [monthA, monthB]]
+      ]);
+    }
+  });
+}
+
+// Set heatmap-weight on all layers based on phase between monthA and monthB
+function setWeightAll(phaseVal) {
+  const weightExpr = [
+    'case',
+    ['==', ['get', 'month'], monthA], 1 - phaseVal,
+    ['==', ['get', 'month'], monthB], phaseVal,
+    0
+  ];
+  SPECIES.forEach(cfg => {
+    if (map.getLayer(cfg.id)) {
+      map.setPaintProperty(cfg.id, 'heatmap-weight', weightExpr);
+    }
+  });
+}
+
+// Blur radius for morphing effect
+function applyRadiusAll(phaseVal) {
+  const blurFactor = Math.sin(phaseVal * Math.PI) * extraBlur;
+  const factor = 1 + blurFactor;
+  const radiusExpr = [
+    'interpolate', ['linear'], ['zoom'],
+    0, 2 * factor,
+    4, 12 * factor,
+    8, 24 * factor
+  ];
+  SPECIES.forEach(cfg => {
+    if (map.getLayer(cfg.id)) {
+      map.setPaintProperty(cfg.id, 'heatmap-radius', radiusExpr);
+    }
+  });
+}
+
+// Animation loop
+function stepAnimation(timestamp) {
+  if (!isPlaying) return;
+
+  if (startTime === null) startTime = timestamp;
+  const elapsed = timestamp - startTime;
+  phase = elapsed / morphDuration;
+
+  if (phase > 1) phase = 1;
+
+  setWeightAll(phase);
+  applyRadiusAll(phase);
+
+  if (phase < 1) {
+    animFrame = requestAnimationFrame(stepAnimation);
+  } else {
+    // Advance to next month and restart cycle
+    monthA = monthB;
+    monthB = (monthB % 12) + 1;
+    setFilterAll();
+    updateLabels();
+    startTime = null;
+    phase = 0;
+    if (isPlaying) {
+      animFrame = requestAnimationFrame(stepAnimation);
+    }
+  }
+}
+
+function startAnimation() {
+  if (isPlaying) return;
+  isPlaying = true;
+  document.getElementById('playPause').textContent = 'Pause';
+  monthB = (monthA % 12) + 1;
+  setFilterAll();
+  startTime = null;
+  phase = 0;
+  document.getElementById('phaseSlider').value = phase.toFixed(2);
+  animFrame = requestAnimationFrame(stepAnimation);
+}
+
+function stopAnimation() {
+  isPlaying = false;
+  document.getElementById('playPause').textContent = 'Play';
+  if (animFrame) {
+    cancelAnimationFrame(animFrame);
+    animFrame = null;
+  }
+  startTime = null;
+}
+
+// Map load
+map.on('load', () => {
+
+  // Shared base of paint settings (without color)
+  const sharedPaintBase = {
+    'heatmap-weight': 1,
+    'heatmap-intensity': [
+      'interpolate', ['linear'], ['zoom'],
+      0, 0.5,
+      5, 1.0,
+      8, 1.5
+    ],
+    'heatmap-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      0, 2,
+      4, 12,
+      8, 24
+    ],
+    'heatmap-opacity': 0.85,
+    'heatmap-opacity-transition': { duration: 0, delay: 0 },
+    'heatmap-radius-transition': { duration: 0, delay: 0 },
+    'heatmap-weight-transition': { duration: 0, delay: 0 }
+  };
+
+  // Add sources
+  SPECIES.forEach(cfg => {
+    map.addSource(cfg.sourceId, {
+      type: 'vector',
+      url: cfg.url
+    });
+  });
+
+  // Blue whales 2008 (blue)
+  map.addLayer({
+    id: 'blue_2008_heat',
+    type: 'heatmap',
+    source: 'blue_2008_src',
+    'source-layer': 'Blue_whale_merged_2008_2006_2-bhifyv',
+    maxzoom: 9,
+    paint: {
+      ...sharedPaintBase,
+      'heatmap-color': [
+        'interpolate', ['linear'], ['heatmap-density'],
+        0.0, 'rgba(0,0,0,0)',
+        0.3, 'rgba(150,200,255,0.6)',
+        0.6, 'rgba(70,130,255,0.8)',
+        1.0, 'rgba(0,60,200,0.95)'
+      ]
+    }
+  }, 'waterway-label');
+
+  // Sperm whales 2019 (red)
+  map.addLayer({
+    id: 'sperm_2019_heat',
+    type: 'heatmap',
+    source: 'sperm_2019_src',
+    'source-layer': 'Sperm_whale_gbif_2006_2025-09g1qn',
+    maxzoom: 9,
+    paint: {
+      ...sharedPaintBase,
+      'heatmap-color': [
+        'interpolate', ['linear'], ['heatmap-density'],
+        0.0, 'rgba(0,0,0,0)',
+        0.3, 'rgba(255,180,160,0.6)',
+        0.6, 'rgba(230,80,60,0.8)',
+        1.0, 'rgba(200,30,30,0.95)'
+      ]
+    }
+  }, 'blue_2008_heat');
+
+  // Humpback whales 2019 (green)
+  map.addLayer({
+    id: 'humpback_2019_heat',
+    type: 'heatmap',
+    source: 'humpback_2019_src',
+    'source-layer': 'Humpback_whale_merged_2019_Au-59si9c',
+    maxzoom: 9,
+    paint: {
+      ...sharedPaintBase,
+      'heatmap-color': [
+        'interpolate', ['linear'], ['heatmap-density'],
+        0.0, 'rgba(0,0,0,0)',
+        0.3, 'rgba(180,240,190,0.6)',
+        0.6, 'rgba(80,200,120,0.8)',
+        1.0, 'rgba(0,140,60,0.95)'
+      ]
+    }
+  }, 'sperm_2019_heat');
+
+  // Initial filter/weights/labels
+  setFilterAll();
+  setWeightAll(0);
+  applyRadiusAll(0);
+  updateLabels();
+
+  // Slider manual control (month)
+  const slider = document.getElementById('monthSlider');
+  slider.addEventListener('input', () => {
+    stopAnimation();
+    monthA = parseInt(slider.value, 10);
+    monthB = (monthA % 12) + 1;
+    setFilterAll();
+    phase = 0;
+    setWeightAll(0);      // full weight on monthA
+    applyRadiusAll(0);    // normal radius
+    document.getElementById('phaseSlider').value = phase.toFixed(2);
+    updateLabels();
+  });
+
+  // Play/pause button
+  document.getElementById('playPause').addEventListener('click', () => {
+    if (isPlaying) {
+      stopAnimation();
+    } else {
+      startAnimation();
+    }
+  });
+
+  // Species visibility toggles
+  const checkboxes = document.querySelectorAll('#controls input[type="checkbox"][data-layer]');
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const layerId = e.target.getAttribute('data-layer');
+      const visible = e.target.checked ? 'visible' : 'none';
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', visible);
+      }
+    });
+  });
+
+  // Animation controls panel toggle
+  const animPanelHeader = document.getElementById('animPanelHeader');
+  const animPanelBody = document.getElementById('animPanelBody');
+  const animPanelArrow = document.getElementById('animPanelArrow');
+  let animPanelOpen = false;
+
+  animPanelHeader.addEventListener('click', () => {
+    animPanelOpen = !animPanelOpen;
+    animPanelBody.style.display = animPanelOpen ? 'block' : 'none';
+    animPanelArrow.textContent = animPanelOpen ? '▾' : '▸';
+  });
+
+  // Phase slider (transition position)
+  const phaseSlider = document.getElementById('phaseSlider');
+  phaseSlider.addEventListener('input', () => {
+    const val = parseFloat(phaseSlider.value);
+    if (isNaN(val)) return;
+    stopAnimation();      // take over manually
+    phase = val;
+    setWeightAll(phase);
+    applyRadiusAll(phase);
+  });
+
+  // Duration input (seconds per month transition)
+  const durationInput = document.getElementById('durationInput');
+  durationInput.addEventListener('change', () => {
+    const sec = parseFloat(durationInput.value);
+    if (!isNaN(sec) && sec > 0) {
+      morphDuration = sec * 1000;  // convert to ms
+    }
+  });
+
+  // Blur slider (blur strength)
+  const blurSlider = document.getElementById('blurSlider');
+  blurSlider.addEventListener('input', () => {
+    const val = parseFloat(blurSlider.value);
+    if (isNaN(val) || val < 0) return;
+    extraBlur = val;
+    applyRadiusAll(phase);
+  });
+
+  // Auto-start animation
+  animFrame = requestAnimationFrame(stepAnimation);
+});
+</script>
+
+</body>
+</html>
